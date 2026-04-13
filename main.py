@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 # Load .env file
 load_dotenv()
 
-# Get API key from environment
+# Get API key from environment asdfasdfasdfsadf
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Your alert prompt
