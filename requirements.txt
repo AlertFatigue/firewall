@@ -1,0 +1,8 @@
+pandas
+scikit-learn
+umap-learn
+hdbscan
+catboost
+joblib
+google-generativeai
+numpy

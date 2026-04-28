@@ -1,114 +1,136 @@
 # main.py
+from __future__ import annotations
+
+import argparse
+import os
+from typing import Optional
+
 import joblib
+from sklearn.model_selection import train_test_split
+
 import config
+from classifier import get_labels, init_llm, row_to_llm_context
+from clustering import extract_outliers_and_exemplars, run_clustering
 from dataLoader import load_data
 from features import process_features
-from clustering import run_clustering, extract_outliers_and_exemplars
-from classifier import row_to_llm_context, init_llm, get_labels
-from sklearn.model_selection import train_test_split
-import sys
 
-def main():
-    print("Loading data...")
-    ml_ready_df, human_readable_df = load_data(config.FILE_PATH)
+
+def _safe_stratify(labels):
+    counts = labels.value_counts()
+    if len(counts) < 2:
+        print("WARNING: Only one target class found. Train/test split will not be stratified.")
+        return None
+    if counts.min() < 2:
+        print("WARNING: At least one class has fewer than 2 rows. Train/test split will not be stratified.")
+        return None
+    return labels
+
+
+def _apply_label_by_position(training_df, target_index, labels_dict, position: int):
+    label, _score = labels_dict[position]
+    training_df.loc[target_index, "target_label"] = label
+
+
+def main(argv: Optional[list[str]] = None):
+    parser = argparse.ArgumentParser(description="Run UMAP/HDBSCAN + LLM label propagation pipeline.")
+    parser.add_argument("--input", default=config.FILE_PATH, help="Path to Suricata EVE JSON-lines file.")
+    parser.add_argument("--dataset", default=config.DATASET_NAME, help="Dataset name used for output filenames.")
+    parser.add_argument("--output-dir", default=config.OUTPUT_DIR, help="Directory for output CSV/model files.")
+    parser.add_argument("--no-llm", action="store_true", help="Do not call Gemini; use deterministic fallback labels.")
+    parser.add_argument("--test-size", type=float, default=0.2, help="Test split size. Default: 0.2")
+    args = parser.parse_args(argv)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    labeled_file = os.path.join(args.output_dir, f"{args.dataset}_labeled.csv")
+    train_file = os.path.join(args.output_dir, f"{args.dataset}_train.csv")
+    test_file = os.path.join(args.output_dir, f"{args.dataset}_test.csv")
+    clustered_human_file = os.path.join(args.output_dir, f"{args.dataset}_clustered_human_readable.csv")
+    scaler_file = os.path.join(args.output_dir, f"{args.dataset}_robust_scaler.pkl")
+
+    print(f"Loading data from: {args.input}")
+    raw_df, human_readable_df = load_data(args.input)
 
     print("Processing features...")
-    ml_ready_df, scaler = process_features(ml_ready_df)
+    feature_df, scaler = process_features(raw_df)
 
-    print("Running UMAP and HDBSCAN...")
-    human_readable_df = run_clustering(ml_ready_df, human_readable_df)
+    print("Running UMAP + HDBSCAN...")
+    clustered_human_df = run_clustering(feature_df, human_readable_df)
 
-    print("Extracting outliers and exemplars...")
-    outliers_df, exemplars_df = extract_outliers_and_exemplars(human_readable_df)
+    print("Extracting individual outliers and normal cluster exemplars...")
+    outliers_df, exemplars_df = extract_outliers_and_exemplars(clustered_human_df)
+    print(f"Normal cluster exemplars: {len(exemplars_df)}")
+    print(f"Outliers selected for individual labeling: {len(outliers_df)}")
 
     print("Preparing LLM contexts...")
     outlier_contexts = [row_to_llm_context(row) for _, row in outliers_df.iterrows()]
     exemplar_contexts = [row_to_llm_context(row) for _, row in exemplars_df.iterrows()]
 
-    print("Initializing Gemini LLM...")
-    # Pass the labels list directly to the init function so it gets baked into the prompt
-    model = init_llm(config.THREAT_LABELS)
+    model = None if args.no_llm else init_llm(config.THREAT_LABELS)
+    if model is None:
+        print("Gemini not available or --no-llm used. Using deterministic fallback labels for debugging.")
+    else:
+        print("Gemini initialized successfully.")
 
-    print("Generating labels via API...")
+    print("Generating labels for outliers...")
     outlier_labels = get_labels(outlier_contexts, model, config.THREAT_LABELS)
+
+    print("Generating labels for cluster exemplars...")
     exemplar_labels = get_labels(exemplar_contexts, model, config.THREAT_LABELS)
 
-    print("Building training dataset...")
-    training_df = ml_ready_df.copy()
-    
-    # Initialize everything as a safe default
-    training_df['target_label'] = "Unclassified / Background Noise"
-    
-    # 1. Apply Outlier Labels (One-to-One)
-    # Outliers don't belong to clusters, so we apply these individually
-    for i, (idx, row) in enumerate(outliers_df.iterrows()):
-        context = exemplar_contexts[i]
-        if "444" in context:
-            print("\n--- ATTACK CLUSTER CONTEXT SENT TO GEMINI ---")
-            print(context)
-        # This will show you exactly what Gemini saw before it chose "HTTP"
-        label, score = outlier_labels[i]
-        training_df.at[idx, 'target_label'] = label
+    print("Building labeled training dataset...")
+    training_df = feature_df.copy()
+    training_df["target_label"] = "Unclassified / Background Noise"
+    training_df["flow_id"] = training_df.index.astype(str)
 
-    # 2. Apply Exemplar Labels to ENTIRE Clusters (One-to-Many)
-    # This is the "Label Propagation" step
-    for i, (idx, row) in enumerate(exemplars_df.iterrows()):
-        cluster_id = row['cluster_label'] # Get the Cluster ID (e.g., 4)
-        label, score = exemplar_labels[i]
-        
-        # Find every row in the ORIGINAL human_readable_df that belongs to this cluster
-        member_ids = human_readable_df[human_readable_df['cluster_label'] == cluster_id].index
-        
-        # Broadcast the LLM's label to every member of that cluster in training_df
-        training_df.loc[member_ids, 'target_label'] = label
+    # Mark every HDBSCAN outlier as suspicious by default, then overwrite selected
+    # outliers with individual LLM/fallback labels.
+    all_outlier_ids = clustered_human_df[clustered_human_df["cluster_label"] == -1].index
+    if len(all_outlier_ids) > 0:
+        training_df.loc[all_outlier_ids, "target_label"] = "Malformed protocol anomaly or unknown suspicious behavior"
 
-    print("Saving outputs...")
-    training_df.to_csv('catboost_training_data.csv')
-    joblib.dump(scaler, 'robust_scaler.pkl')
+    # Individual outlier labels.
+    for position, (idx, _row) in enumerate(outliers_df.iterrows()):
+        _apply_label_by_position(training_df, idx, outlier_labels, position)
 
-    print("\n--- Final Label Distribution ---")
-    print(training_df['target_label'].value_counts())
-    print("\nDone. Dataset ready.")
-# 4. Final Stratified 80/20 Split
-    print("\nPerforming Stratified 80/20 Split...")
-    
-    # We use 'stratify' to ensure the minority class (the attack) is perfectly balanced
+    # Cluster label propagation: exemplar label -> all members of that normal cluster.
+    for position, (_idx, row) in enumerate(exemplars_df.iterrows()):
+        cluster_id = row["cluster_label"]
+        label, _score = exemplar_labels[position]
+        member_ids = clustered_human_df[clustered_human_df["cluster_label"] == cluster_id].index
+        training_df.loc[member_ids, "target_label"] = label
+
+    # Add cluster metadata for traceability but do not use it as model features later.
+    training_df["cluster_label"] = clustered_human_df["cluster_label"]
+    training_df["cluster_probability"] = clustered_human_df["cluster_probability"]
+
+    print("Saving labeled artifacts...")
+    training_df.to_csv(labeled_file)
+    clustered_human_df.to_csv(clustered_human_file)
+    joblib.dump(scaler, scaler_file)
+
+    print("Performing train/test split...")
+    stratify = _safe_stratify(training_df["target_label"])
     train_df, test_df = train_test_split(
-        training_df, 
-        test_size=0.2, 
-        random_state=42, 
-        stratify=training_df['target_label']
+        training_df,
+        test_size=args.test_size,
+        random_state=42,
+        stratify=stratify,
     )
 
-    # 5. Dynamic File Saving based on what we are processing
-    # If the file path contains 'heartbleed', save as heartbleed. If 'dos', save as dos.
-    if "heartbleed" in config.FILE_PATH.lower():
-        train_filename = 'heartbleed_train.csv'
-        test_filename = 'heartbleed_test.csv'
-        print("Detected Heartbleed dataset. Saving files...")
-    elif "dos" in config.FILE_PATH.lower():
-        train_filename = 'dos_train.csv'
-        test_filename = 'dos_test.csv'
-        print("Detected DoS dataset. Saving files...")
-    else:
-        train_filename = 'generic_train.csv'
-        test_filename = 'generic_test.csv'
+    train_df.to_csv(train_file)
+    test_df.to_csv(test_file)
 
-    # Save the artifacts
-    train_df.to_csv(train_filename)
-    test_df.to_csv(test_filename)
+    print("\n=== FINAL DATASET METRICS ===")
+    print(f"Total flows processed: {len(training_df)}")
+    print(f"Training set: {len(train_df)} rows -> {train_file}")
+    print(f"Testing set: {len(test_df)} rows -> {test_file}")
+    print(f"Labeled full dataset -> {labeled_file}")
+    print(f"Human-readable clustered file -> {clustered_human_file}")
+    print("\n--- Label Distribution ---")
+    print(training_df["target_label"].value_counts())
+    print("\nDone.")
 
-    # 6.
-    print(f"\n=== FINAL DATASET METRICS ===")
-    print(f"Total Flows Processed: {len(training_df)}")
-    print(f"Training Set: {len(train_df)} rows")
-    print(f"Testing Set: {len(test_df)} rows")
-    
-    print("\n--- Training Set Label Distribution ---")
-    print(train_df['target_label'].value_counts())
-    
-    print("\n--- Testing Set Label Distribution ---")
-    print(test_df['target_label'].value_counts())
 
 if __name__ == "__main__":
     main()

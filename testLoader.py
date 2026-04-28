@@ -1,130 +1,91 @@
-import dataLoader
+# testLoader.py
+from __future__ import annotations
+
+import argparse
+import os
+
 import pandas as pd
-import features
-import clustering
+
 import classifier
+import clustering
 import config
+import dataLoader
+import features
 
-# Set pandas to show us all the columns instead of hiding them with "..."
-pd.set_option('display.max_columns', None)
-
-# Path to your freshly generated log
-file_path = './thesis_output/smart_sample.json'
-
-print(f"Loading data from {file_path}...")
-
-# Run your newly fixed loader!
-ml_ready_df, human_readable_df = dataLoader.load_data(file_path)
-
-# --- Sanity Checks ---
-
-print("\n=== THE VERIFICATION ===")
-print(f"Total unique connections (flow_ids) processed: {len(ml_ready_df)}")
-
-# 1. Did the DNS fix work?
-print("\n--- Checking DNS ---")
-if 'dns.rrname' in ml_ready_df.columns:
-    print("SUCCESS: 'dns.rrname' column exists!")
-    # Print the first 5 non-null DNS names to prove it extracted the text
-    print(ml_ready_df['dns.rrname'].dropna().head())
-else:
-    print("FAIL: 'dns.rrname' is missing. The JSON flattening didn't catch it.")
-
-# 2. Did the Flow metadata attach correctly?
-print("\n--- Checking Flow Metrics ---")
-if 'flow.pkts_toserver' in ml_ready_df.columns:
-    print("SUCCESS: Flow metrics exist!")
-    print(ml_ready_df[['flow.pkts_toserver', 'flow.bytes_toclient', 'flow.state']].dropna().head())
-else:
-    print("FAIL: Flow metrics are missing.")
-
-# 3. Did the Alerts trigger?
-print("\n--- Checking Alerts ---")
-if 'alert.severity' in ml_ready_df.columns:
-    print("SUCCESS: Alerts triggered and severity was logged!")
-    print(ml_ready_df['alert.severity'].dropna().value_counts())
-else:
-    print("FAIL: No alerts found in this dataset.")
+pd.set_option("display.max_columns", None)
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Sanity-test the data loading, features, clustering, and LLM contexts.")
+    parser.add_argument("--input", default=config.FILE_PATH, help="Path to EVE JSON-lines file.")
+    parser.add_argument("--sample-contexts", type=int, default=5)
+    parser.add_argument("--call-llm", action="store_true", help="Actually call Gemini if GEMINI_API_KEY is configured.")
+    args = parser.parse_args()
+
+    print(f"Loading data from {args.input}...")
+    raw_df, human_readable_df = dataLoader.load_data(args.input)
+
+    print("\n=== VERIFICATION ===")
+    print(f"Total unique flows processed: {len(raw_df)}")
+
+    print("\n--- Checking DNS ---")
+    if "dns.rrname" in raw_df.columns:
+        print("SUCCESS: dns.rrname column exists.")
+        print(raw_df["dns.rrname"].dropna().head())
+    else:
+        print("WARNING: dns.rrname is missing in this dataset.")
+
+    print("\n--- Checking Flow Metrics ---")
+    flow_cols = [c for c in ["flow.pkts_toserver", "flow.bytes_toclient", "flow.state"] if c in raw_df.columns]
+    if flow_cols:
+        print("SUCCESS: Flow metrics exist.")
+        print(raw_df[flow_cols].dropna().head())
+    else:
+        print("WARNING: Flow metrics are missing.")
+
+    print("\n--- Checking Alerts ---")
+    if "alert.severity" in raw_df.columns:
+        print("SUCCESS: Alerts exist in this dataset.")
+        print(raw_df["alert.severity"].dropna().value_counts())
+    else:
+        print("WARNING: No alert.severity column found in this dataset.")
+
+    print("\n=== TESTING FEATURE EXTRACTION ===")
+    feature_df, fitted_scaler = features.process_features(raw_df)
+    print(f"Final feature vector shape: {feature_df.shape}")
+    print(feature_df.head(3))
+
+    print("\n=== TESTING CLUSTERING ===")
+    clustered_df = clustering.run_clustering(feature_df, human_readable_df)
+    outliers_df, exemplars_df = clustering.extract_outliers_and_exemplars(clustered_df)
+
+    valid_clusters = [lbl for lbl in clustered_df["cluster_label"].unique() if lbl != -1]
+    print(f"Total normal clusters found: {len(valid_clusters)}")
+    print(f"Total selected outliers: {len(outliers_df)}")
+
+    print("\n--- Exemplars ---")
+    preview_cols = [c for c in ["cluster_label", "cluster_probability", "dns.rrname", "dest_ip", "dest_port"] if c in exemplars_df.columns]
+    print(exemplars_df[preview_cols].head() if not exemplars_df.empty else "No exemplars found.")
+
+    print("\n=== TESTING CONTEXT GENERATION ===")
+    # FIX: use exemplars_df for exemplar contexts, not outliers_df.
+    contexts = [classifier.row_to_llm_context(row) for _, row in exemplars_df.head(args.sample_contexts).iterrows()]
+    print(f"Generated {len(contexts)} exemplar contexts.")
+    for i, text in enumerate(contexts[: args.sample_contexts], start=1):
+        print(f"\n--- Context {i} ---")
+        print("\n".join(text.split("\n")[:8]))
+
+    if args.call_llm:
+        print("\n=== TESTING LLM CLASSIFIER ===")
+        llm_model = classifier.init_llm(config.THREAT_LABELS)
+        if llm_model is None:
+            print("Gemini is unavailable. Set GEMINI_API_KEY or install google-generativeai.")
+        predictions = classifier.get_labels(contexts, llm_model, config.THREAT_LABELS)
+        for i, (label, confidence) in predictions.items():
+            print(f"Context {i}: {label} (confidence marker: {confidence})")
+
+    print("\nSanity test complete.")
 
 
-# --- NEW TEST CODE ---
-print("\n=== TESTING FEATURE EXTRACTION ===")
-
-# 2. Pass the raw data into your features script
-# FIX: Use 'process_features' and catch both the DataFrame and the Scaler!
-final_feature_vector, fitted_scaler = features.process_features(ml_ready_df)
-
-# 3. Verify the shape and columns
-print(f"Final Feature Vector Shape: {final_feature_vector.shape}")
-print("\nFirst 3 rows of the fully processed ML data:")
-print(final_feature_vector.head(3))
-
-# --- NEW TEST CODE ---
-print("\n=== TESTING CLUSTERING (UMAP + HDBSCAN) ===")
-
-# 1. Run the clustering using the math matrix, but attach labels to the human data!
-clustered_df = clustering.run_clustering(final_feature_vector, human_readable_df)
-
-# 2. Extract the LLM-ready targets
-outliers_df, exemplars_df = clustering.extract_outliers_and_exemplars(clustered_df)
-
-# 3. Print the results
-valid_clusters = [lbl for lbl in clustered_df['cluster_label'].unique() if lbl != -1]
-print(f"Total Distinct Traffic Behaviors (Clusters) found: {len(valid_clusters)}")
-print(f"Total Anomalies (Outliers) found: {len(outliers_df)}")
-
-print("\n--- The Exemplars (Normal Traffic Representatives) ---")
-# Let's peek at the human-readable DNS or IPs of the exemplars
-if 'dns.rrname' in exemplars_df.columns:
-    print(exemplars_df[['cluster_label', 'dns.rrname', 'dest_port']].head())
-else:
-    print(exemplars_df[['cluster_label', 'dest_ip', 'dest_port']].head())
-
-
-print("\n=== TESTING LLM CLASSIFIER ===")
-
-try:
-    # 1. Initialize the model using your config labels
-    llm_model = classifier.init_llm(config.THREAT_LABELS)
-    print("Gemini model initialized successfully!")
-
-    # 2. Translate the Pandas rows into LLM context
-    print(f"Translating {len(exemplars_df)} exemplars to LLM context...")
-    contexts = [classifier.row_to_llm_context(row) for _, row in outliers_df.iterrows()]
-    # 3. Get predictions
-    print("Querying Gemini API (this will take a few seconds)...")
-    predictions = classifier.get_labels(contexts, llm_model, config.THREAT_LABELS)
-
-    # 4. Display the results!
-    for i, text in enumerate(contexts):
-        print("\n--- Network Flow ---")
-        # Print just the first 3 lines of your context so it doesn't flood the screen
-        print("\n".join(text.split("\n")[:3]) + " ...")
-        print(f"👉 LLM CLASSIFICATION: {predictions[i][0]}")
-
-except ValueError as e:
-    print(f"\n🚨 ERROR: {e}")
-    print("Did you forget to run: export GEMINI_API_KEY='your_key' ?")
-
-
-print("\n=== TESTING LABEL PROPAGATION ===")
-
-# Create a mock training_df
-test_training_df = ml_ready_df.copy()
-test_training_df['target_label'] = "Pending"
-
-# Test the "One-to-Many" broadcast logic
-for i, (idx, row) in enumerate(exemplars_df.iterrows()):
-    cluster_id = row['cluster_label']
-    label = predictions[i][0] # The label Gemini just gave us
-    
-    # Find all members
-    members = human_readable_df[human_readable_df['cluster_label'] == cluster_id].index
-    test_training_df.loc[members, 'target_label'] = label
-    print(f"Cluster {cluster_id} propagated label '{label}' to {len(members)} flows.")
-
-# Check the final counts
-print("\nFinal Resulting Label Distribution:")
-print(test_training_df['target_label'].value_counts())
+if __name__ == "__main__":
+    main()
