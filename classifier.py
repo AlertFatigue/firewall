@@ -1,6 +1,7 @@
 import pandas as pd
 import google.generativeai as genai
 import os
+from dotenv import load_dotenv
 import time
 import pickle
 from google.api_core.exceptions import ResourceExhausted
@@ -37,6 +38,7 @@ def row_to_llm_context(row):
 
 def init_llm(threat_labels):
     """Initializes the Gemini model with a strict CRISPE system prompt."""
+    load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable not found.")
