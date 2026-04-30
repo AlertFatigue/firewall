@@ -27,9 +27,17 @@ def main():
         print("Loading data...")
         ml_ready_df, human_readable_df = load_data(config.FILE_PATH)
 
-        
-        print(f"Original size: {len(ml_ready_df)} alerts. Sampling down to 250,000 to save RAM...")
-        ml_ready_df = ml_ready_df.sample(n=250000, random_state=42)
+
+        print(f"Creating balanced dataset of 10,000 alerts by Alert Category...")
+        balanced_df = ml_ready_df.groupby('alert.category', group_keys=False).apply(
+    lambda x: x.sample(min(len(x), 1450), random_state=42)
+)
+        if len(balanced_df) > 10000:
+            balanced_df = balanced_df.sample(n=10000, random_state=42)
+        ml_ready_df = balanced_df
+        human_readable_df = human_readable_df.loc[ml_ready_df.index]
+
+        print(f"New dataset size: {len(ml_ready_df)} alerts.")
         print("Processing features...")
         ml_ready_df, scaler = process_features(ml_ready_df)
         joblib.dump(scaler, 'robust_scaler.pkl') # Save scaler early
