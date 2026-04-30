@@ -40,9 +40,10 @@ def init_llm(threat_labels):
     """Initializes the Gemini model with a strict CRISPE system prompt."""
     load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
+    
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable not found.")
-    
+    api_key = api_key.strip()
     genai.configure(api_key=api_key)
     labels_string = "\n".join([f"- {label}" for label in threat_labels])
 
