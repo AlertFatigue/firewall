@@ -142,5 +142,13 @@ def main():
     
     print("\nDone. Dataset ready.")
 
+    total_latency = ml_ready_df['llm_latency_sec'].sum()
+    total_api_calls = len(outliers_df) + len(exemplars_df)
+    avg_latency_per_call = total_latency / total_api_calls if total_api_calls > 0 else 0
+    print(f"\n=== LLM PERFORMANCE METRICS ===")
+    print(f"Total API Calls Made: {total_api_calls}")
+    print(f"Total Time Waiting on API: {total_latency:.2f} seconds ({total_latency/60:.2f} minutes)")
+    print(f"Average Latency per Call: {avg_latency_per_call:.2f} seconds")
+
 if __name__ == "__main__":
     main()
