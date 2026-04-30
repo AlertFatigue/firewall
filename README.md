@@ -1,4 +1,4 @@
-# 🔐 LLM-Assisted Suricata Alert Triage
+# 🔐 LLM-Assisted Suricata Alert Triageasdfasfd
 
 This project demonstrates how a Large Language Model (LLM) can be used as a **post-processing layer** to reduce alert fatigue in Intrusion Detection Systems (IDS), specifically **Suricata**.
 
