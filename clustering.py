@@ -9,11 +9,11 @@ warnings.filterwarnings("ignore", category=UserWarning, module="umap")
 def run_clustering(ml_ready_df, human_readable_df):
     # n_neighbors=100 forces UMAP to look at the "big picture" and connect the islands
     # min_dist=0.0 packs the clusters tighter together
-    reducer = umap.UMAP(n_components=5, n_neighbors=30, min_dist=0.0, random_state=42)
+    reducer = umap.UMAP(n_components=5, n_neighbors=15, min_dist=0.01, random_state=42)
     umap_embeddings = reducer.fit_transform(ml_ready_df)
 
     # min cluster size and n neighbors need changed to account for smaller dataset.
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=50, min_samples=10, metric='euclidean')
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=30, min_samples=3, metric='euclidean')
     cluster_labels = clusterer.fit_predict(umap_embeddings)
     cluster_probs = clusterer.probabilities_
 

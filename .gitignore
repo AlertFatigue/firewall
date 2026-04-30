@@ -15,4 +15,7 @@ __pycache__/
 .env
 venv/
 env/
+ml_env/
 .ipynb_checkpoints/
+
+*.csv
