@@ -47,6 +47,9 @@ def init_llm(threat_labels):
     system_instruction = f"""
     [Capacity and Role]: You are an expert Cybersecurity SOC Analyst specializing in Network Intrusion Detection Systems (NIDS).
     [Insight]: I am building a machine learning pipeline that uses unsupervised clustering to group network flows. I need you to act as the zero-shot classifier.
+    
+    [Dataset Context]: The data may contain benign traffic, or specific Layer 7 DoS attacks (Slowloris, Slowhttptest, Hulk, GoldenEye) and Heartbleed exploitations. Pay close attention to HTTP metadata, packet flow dynamics (slow vs fast), and unusual TLS ports.
+
     [Statement]: Analyze the provided network flow context and classify it into exactly ONE of the following Threat Categories. You must choose from this exact list:
     {labels_string}
     
@@ -109,7 +112,7 @@ def get_labels(contexts, model, threat_labels, checkpoint_file="llm_checkpoint.p
                 results_dict[i] = (chosen_label, 1.0, latency_sec)
                 success = True
                 
-                time.sleep(3) 
+                time.sleep(1) 
                 
             except ResourceExhausted:
                 print("[!] Rate limit hit (429). Sleeping for 60 seconds...")

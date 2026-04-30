@@ -37,12 +37,21 @@ CONTINUOUS_COLS = [
 ]
 
 THREAT_LABELS = [
+    # --- BENIGN TRAFFIC ---
     "Standard DNS Resolution and Naming Services",
     "Routine Unencrypted Web Traffic (HTTP)",
     "Routine Encrypted Web Traffic (HTTPS/TLS)",
     "Benign Background Network Noise (ICMP, ARP, DHCP)",
     "Standard Internal IT and Directory Services (LDAP, SMB, Active Directory)",
+    
+    # --- WEDNESDAY ATTACK TRAFFIC ---
+    "HTTP - Application Layer DoS (Slowloris)",
+    "HTTP - Application Layer DoS (Slowhttptest)",
+    "HTTP - Application Layer DoS (Hulk)",
+    "HTTP - Application Layer DoS (GoldenEye)",
+    "TLS/SSL Port 444 - Heartbleed Vulnerability Exploitation",
+    
+    # --- FALLBACKS ---
     "Suspicious Command and Control (C2) Beaconing",
-    "Known Vulnerability Exploitation or Active Attack",
     "Malformed protocol anomaly or unknown suspicious behavior"
 ]
