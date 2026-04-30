@@ -27,10 +27,14 @@ def main():
         print("Loading data...")
         ml_ready_df, human_readable_df = load_data(config.FILE_PATH)
 
+        
+        print(f"Original size: {len(ml_ready_df)} alerts. Sampling down to 250,000 to save RAM...")
+        ml_ready_df = ml_ready_df.sample(n=250000, random_state=42)
         print("Processing features...")
         ml_ready_df, scaler = process_features(ml_ready_df)
         joblib.dump(scaler, 'robust_scaler.pkl') # Save scaler early
-
+        ml_ready_df = ml_ready_df.astype('float32')
+        
         print("Running UMAP and HDBSCAN...")
         human_readable_df = run_clustering(ml_ready_df, human_readable_df)
 
