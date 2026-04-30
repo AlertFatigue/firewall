@@ -28,16 +28,24 @@ def main():
         ml_ready_df, human_readable_df = load_data(config.FILE_PATH)
 
 
-        print(f"Creating balanced dataset of 10,000 alerts by Alert Category...")
+        print("Creating a balanced subset of 10,000 alerts...")
+        
+        # Calculate exactly how many we need per category to hit 10,000
+        num_categories = ml_ready_df['alert.category'].nunique()
+        per_category_target = int(10000 / num_categories) + 1
+        
         balanced_df = ml_ready_df.groupby('alert.category', group_keys=False).apply(
-    lambda x: x.sample(min(len(x), 1450), random_state=42)
-)
+            lambda x: x.sample(min(len(x), per_category_target), random_state=42)
+        )
+        
+        # If it slightly overshoots due to rounding, trim it to exactly 10k
         if len(balanced_df) > 10000:
             balanced_df = balanced_df.sample(n=10000, random_state=42)
+
         ml_ready_df = balanced_df
         human_readable_df = human_readable_df.loc[ml_ready_df.index]
-
-        print(f"New dataset size: {len(ml_ready_df)} alerts.")
+        
+        print(f"Balanced dataset size: {len(ml_ready_df)} alerts.")
         print("Processing features...")
         ml_ready_df, scaler = process_features(ml_ready_df)
         joblib.dump(scaler, 'robust_scaler.pkl') # Save scaler early
