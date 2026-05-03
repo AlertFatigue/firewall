@@ -8,6 +8,7 @@ exemplars_checkpoint.pkl
 exemplars_checkpoint.pkl.tmp
 outliers_checkpoint.pkl
 outliers_checkpoint.pkl.tmp
+robust_scaler.pkl
 
 __pycache__/
 *.py[cod]
