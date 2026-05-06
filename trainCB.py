@@ -13,8 +13,11 @@ if __name__ == "__main__":
     
     print(f"Dataset loaded. Shape: {df.shape}")
 
-    # Ensure all categorical features are explicitly treated as strings.
-    df[config.CAT_FEATURES] = df[config.CAT_FEATURES].astype(str)
+    # forcefill all NaN with missing and make sure they are strings
+    for col in config.CAT_FEATURES:
+      df[col] = df[col].fillna('Missing').astype(str)
+      # catch any literal nan strings pandas may have created
+      df[col] = df[col].replace('nan', 'Missing')
 
     # Separate X features and target y feature
     X = df.drop('Label', axis=1)
