@@ -1,57 +1,57 @@
-# config.py
 import os
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Just verify this matches what you named your file in the previous step!
-FILE_PATH = os.path.join(SCRIPT_DIR, 'suricata_logs/eve.json') 
+# Ensure this points to your newly merged output!
+FILE_PATH = os.path.join(SCRIPT_DIR, 'suricata_logs/eve_labeled.json') 
 
-HIGH_CARD_COLS = ['tls.sni', 'tls.subject', 'dns.rrname', 'http.hostname', 'http.http_user_agent', 'http.url']
-
-LOW_CARD_COLS = ['proto', 'app_proto', 'http.http_method', 'alert.severity', 'alert.category']
-
-COLS_TO_DROP = ['timestamp', 'src_ip', 'dest_ip', 'src_port', 'dest_port', 'in_iface', 'event_type', 'flow.start', 'icmp_type', 'icmp_code', 'community_id']
-
-MASTER_COLUMNS = [
-    'flow.pkts_toserver', 'flow.pkts_toclient', 'flow.bytes_toserver', 'flow.bytes_toclient', 'flow.age',
-    'tls.sni_length', 'tls.sni_entropy', 'tls.subject_length', 'tls.subject_entropy',
-    'dns.rrname_length', 'dns.rrname_entropy', 'http.hostname_length', 'http.hostname_entropy',
-    'http.http_user_agent_length', 'http.http_user_agent_entropy', 'http.url_length', 'http.url_entropy',
-    'is_dns_failed', 'proto_TCP', 'proto_UDP', 'proto_ICMP', 'proto_IPv6-ICMP', 'proto_nan',
-    'app_proto_http', 'app_proto_tls', 'app_proto_dns', 'app_proto_smb', 'app_proto_ftp', 'app_proto_smtp', 'app_proto_failed', 'app_proto_nan',
-    'alert.severity_1.0', 'alert.severity_2.0', 'alert.severity_3.0', 'alert.severity_nan',
-    'alert.category_Potentially Bad Traffic',
-    'alert.category_Not Suspicious Traffic',
-    'alert.category_Misc activity',
-    'alert.category_Generic Protocol Command Decode',
-    'alert.category_Potential Corporate Privacy Violation',
-    'alert.category_Device Retrieving External IP Address Detected',
-    'alert.category_nan',
-    'Label' # target placeholder
+# ==========================================
+# 1. COLUMNS TO DROP
+# ==========================================
+COLS_TO_DROP = [
+    # removing identifiers and routing
+    'timestamp', 'flow_id', 'tx_id', 'community_id', 'in_iface', 'event_type',
+    'src_ip', 'dest_ip', 'src_port', 'dest_port', 
+    
+    # preventing memorization of timeline by model
+    'pcap_cnt', 'alert.signature', 'alert.signature_id',
+    
+    # zero variance & noise being dropped
+    'pkt_src', 'alert.gid', 'alert.rev', 'flow.start', 'flow.end', 'icmp_type', 'icmp_code',
+    
+    # --- Raw High-Cardinality Strings ---
+    # dropping raw text after calculating length
+    'tls.sni', 'tls.subject', 'dns.rrname', 'http.hostname', 'http.http_user_agent', 'http.url'
 ]
 
-CONTINUOUS_COLS = [
-    'flow.pkts_toserver', 'flow.pkts_toclient', 'flow.bytes_toserver', 'flow.bytes_toclient', 'flow.age',
-    'tls.sni_length', 'tls.sni_entropy', 'tls.subject_length', 'tls.subject_entropy',
-    'dns.rrname_length', 'dns.rrname_entropy', 'http.hostname_length', 'http.hostname_entropy',
-    'http.http_user_agent_length', 'http.http_user_agent_entropy', 'http.url_length', 'http.url_entropy'
+# ==========================================
+# 2. CATBOOST CATEGORICAL FEATURES
+# ==========================================
+# passing this list to catboost directly to natively deal with it
+
+CAT_FEATURES = [
+    'proto', 
+    'app_proto', 
+    'http.http_method', 
+    'alert.severity',  # Can be treated as categorical or numeric, categorical is safer for discrete severity tiers
+    'alert.category'
 ]
 
-THREAT_LABELS = [
-    # --- BENIGN TRAFFIC ---
-    "Standard DNS Resolution and Naming Services",
-    "Routine Unencrypted Web Traffic (HTTP)",
-    "Routine Encrypted Web Traffic (HTTPS/TLS)",
-    "Benign Background Network Noise (ICMP, ARP, DHCP)",
-    "Standard Internal IT and Directory Services (LDAP, SMB, Active Directory)",
+# ==========================================
+# 3. CONTINUOUS NUMERIC FEATURES
+# ==========================================
+# tree algs scale invariant so no need to scale
+NUMERIC_FEATURES = [
+    'flow.pkts_toserver', 
+    'flow.pkts_toclient', 
+    'flow.bytes_toserver', 
+    'flow.bytes_toclient', 
+    'flow.age',
     
-    # --- WEDNESDAY ATTACK TRAFFIC ---
-    "HTTP - Application Layer DoS (Slowloris)",
-    "HTTP - Application Layer DoS (Slowhttptest)",
-    "HTTP - Application Layer DoS (Hulk)",
-    "HTTP - Application Layer DoS (GoldenEye)",
-    "TLS/SSL Port 444 - Heartbleed Vulnerability Exploitation",
-    
-    # --- FALLBACKS ---
-    "Suspicious Command and Control (C2) Beaconing",
-    "Malformed protocol anomaly or unknown suspicious behavior"
+    # keeping length of high cardinality strings
+    'tls.sni_length', 
+    'tls.subject_length', 
+    'dns.rrname_length', 
+    'http.hostname_length', 
+    'http.http_user_agent_length', 
+    'http.url_length'
 ]
