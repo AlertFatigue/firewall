@@ -6,6 +6,8 @@ import time
 import psutil
 import numpy as np
 import os
+import gc # Added for memory management
+
 # ==========================================
 # EXECUTION
 # ==========================================
@@ -13,9 +15,17 @@ if __name__ == "__main__":
     print("1. Loading lightweight CSV dataset...")
     # load feature extracted csv
     dtype_mapping = {col: np.float32 for col in config.NUMERIC_FEATURES}
-    df = pd.read_csv('suricata_features_extracted.csv')
+    
+    # passed the dtype_mapping into the read function to save RAM
+    df = pd.read_csv('suricata_features_extracted.csv', dtype=dtype_mapping)
     
     print(f"Dataset loaded. Shape: {df.shape}")
+
+    # drop rows where the Label is missing to prevent train_test_split crash
+    nan_count = df['Label'].isna().sum()
+    if nan_count > 0:
+        print(f"Warning: Dropping {nan_count} rows with missing Labels.")
+        df = df.dropna(subset=['Label'])
 
     # forcefill all NaN with missing and make sure they are strings
     for col in config.CAT_FEATURES:
@@ -61,6 +71,11 @@ if __name__ == "__main__":
     train_pool = Pool(data=X_train, label=y_train, cat_features=config.CAT_FEATURES)
     test_pool = Pool(data=X_test, label=y_test, cat_features=config.CAT_FEATURES)
 
+    # purge memory before training to prevent OOM Killer
+    print("Purging unused Pandas DataFrames from memory...")
+    del df, X, y, X_train, y_train 
+    gc.collect()
+
     # Loss function with MultiClass due to multiple classes
     model = CatBoostClassifier(
         iterations=1000,
@@ -69,7 +84,9 @@ if __name__ == "__main__":
         loss_function='MultiClass', 
         eval_metric='Accuracy',
         task_type="CPU", 
-        random_seed=42
+        random_seed=42,
+        thread_count=4, # limits CPU threads to prevent memory spikes
+        border_count=32 # reduces memory footprint heavily
     )
 
     # Setup the process tracker
