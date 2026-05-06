@@ -20,3 +20,4 @@ ml_env/
 .ipynb_checkpoints/
 
 *.csv
+catboost_info/

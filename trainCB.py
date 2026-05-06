@@ -2,13 +2,17 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from catboost import CatBoostClassifier, Pool
 import config
-
+import time
+import psutil
+import numpy as np
+import os
 # ==========================================
 # EXECUTION
 # ==========================================
 if __name__ == "__main__":
     print("1. Loading lightweight CSV dataset...")
     # load feature extracted csv
+    dtype_mapping = {col: np.float32 for col in config.NUMERIC_FEATURES}
     df = pd.read_csv('suricata_features_extracted.csv')
     
     print(f"Dataset loaded. Shape: {df.shape}")
@@ -29,7 +33,7 @@ if __name__ == "__main__":
         X, y, 
         test_size=0.20, 
         random_state=42, 
-        stratify=y  # <--- This guarantees proportional class distributions
+        stratify=y 
     )
 
     # Check class outputs
@@ -68,15 +72,63 @@ if __name__ == "__main__":
         random_seed=42
     )
 
+    # Setup the process tracker
+    process = psutil.Process(os.getpid())
+    
+    # training profiling
+    print("\n--- Starting Training ---")
+    start_train_time = time.perf_counter()
+    start_train_ram = process.memory_info().rss / (1024 * 1024) # Convert bytes to MB
+
     model.fit(
         train_pool,
         eval_set=test_pool,
-        verbose=100, # print progress every 100 iterations
-        early_stopping_rounds=50 # Stop if accuracy hasn't improved for 50 trees
+        verbose=100, 
+        early_stopping_rounds=50 
     )
+
+    end_train_time = time.perf_counter()
+    end_train_ram = process.memory_info().rss / (1024 * 1024)
+    
+
+    train_duration = end_train_time - start_train_time
+    ram_used_during_train = end_train_ram - start_train_ram
+
+    print(f"\n[METRICS] Training Latency: {train_duration:.4f} seconds")
+    print(f"[METRICS] RAM footprint after training: {end_train_ram:.2f} MB (+{ram_used_during_train:.2f} MB during fit)")
 
     print("\n4. Training Complete!")
     
     # Save the model
     model.save_model("suricata_catboost_model.cbm")
     print("Model saved to 'suricata_catboost_model.cbm'")
+
+
+    # inference profiling
+    print("\n--- Starting Inference (Testing) Profiling ---")
+    
+    # isolate testing featres
+    num_test_samples = len(X_test)
+    
+    start_infer_time = time.perf_counter()
+    
+    # model predictions for test set
+    predictions = model.predict(X_test)
+    
+    end_infer_time = time.perf_counter()
+    #
+
+    total_infer_duration = end_infer_time - start_infer_time
+    
+    # calculate milliseconds to classify one flow
+    per_flow_latency_ms = (total_infer_duration / num_test_samples) * 1000
+    
+    # throughput calc
+    throughput_fps = num_test_samples / total_infer_duration
+
+    print(f"\n--- THESIS INFERENCE METRICS ---")
+    print(f"Total Test Samples:    {num_test_samples:,}")
+    print(f"Total Inference Time:  {total_infer_duration:.4f} seconds")
+    print(f"Per-Flow Latency:      {per_flow_latency_ms:.6f} milliseconds")
+    print(f"Throughput:            {throughput_fps:,.2f} flows/second")
+    print(f"--------------------------------")
