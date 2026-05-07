@@ -20,13 +20,15 @@ if __name__ == "__main__":
     df = pd.read_csv('suricata_features_extracted.csv', dtype=dtype_mapping)
     
     print(f"Dataset loaded. Shape: {df.shape}")
-
+    
     # drop rows where the Label is missing to prevent train_test_split crash
     nan_count = df['Label'].isna().sum()
     if nan_count > 0:
         print(f"Warning: Dropping {nan_count} rows with missing Labels.")
         df = df.dropna(subset=['Label'])
 
+    print("Grouping DoS attacks into a single 'Malicious' class...")
+    df['Label'] = df['Label'].apply(lambda x: 'Malicious' if x != 'BENIGN' else 'BENIGN')
     # forcefill all NaN with missing and make sure they are strings
     for col in config.CAT_FEATURES:
       df[col] = df[col].fillna('Missing').astype(str)

@@ -21,10 +21,12 @@ if __name__ == "__main__":
     # load data
     dtype_mapping = {col: np.float32 for col in config.NUMERIC_FEATURES}
     df = pd.read_csv('suricata_features_extracted.csv', dtype=dtype_mapping)
-
+    
     # clean missing labels
     df = df.dropna(subset=['Label'])
 
+    print("Grouping DoS attacks into a single 'Malicious' class...")
+    df['Label'] = df['Label'].apply(lambda x: 'Malicious' if x != 'BENIGN' else 'BENIGN')
     # handle missing cat vals
     for col in config.CAT_FEATURES:
         df[col] = df[col].fillna('Missing').astype(str)
