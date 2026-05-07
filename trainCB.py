@@ -78,15 +78,15 @@ if __name__ == "__main__":
     del df, X, y, X_train, y_train 
     gc.collect()
 
-    # Loss function with MultiClass due to multiple classes
+    # catboost model creation, changing lossfunction due to binary classes
     model = CatBoostClassifier(
         iterations=1000,
         learning_rate=0.1,
         depth=6,
-        loss_function='MultiClass', 
-        eval_metric='Accuracy',
+        loss_function='LogLoss', 
+        eval_metric='F1',
         task_type="CPU",
-        auto_class_weights='Balanced', 
+        # auto_class_weights='Balanced', 
         random_seed=24,
         thread_count=4, # limits CPU threads to prevent memory spikes
         border_count=32 # reduces memory footprint heavily
