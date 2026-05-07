@@ -83,7 +83,7 @@ if __name__ == "__main__":
         iterations=1000,
         learning_rate=0.1,
         depth=6,
-        loss_function='LogLoss', 
+        loss_function='Logloss', 
         eval_metric='F1',
         task_type="CPU",
         # auto_class_weights='Balanced', 
