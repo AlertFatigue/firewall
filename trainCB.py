@@ -83,8 +83,9 @@ if __name__ == "__main__":
         depth=6,
         loss_function='MultiClass', 
         eval_metric='Accuracy',
-        task_type="CPU", 
-        random_seed=42,
+        task_type="CPU",
+        auto_class_weights='Balanced', 
+        random_seed=24,
         thread_count=4, # limits CPU threads to prevent memory spikes
         border_count=32 # reduces memory footprint heavily
     )
