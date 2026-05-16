@@ -6,7 +6,7 @@ INPUT_FILE = config.FILE_PATH
 OUTPUT_FILE = 'suricata_features_extracted.csv'
 
 # combine featuers to get csv columns
-FIELDNAMES = config.CAT_FEATURES + config.NUMERIC_FEATURES + ['Label']
+FIELDNAMES = ['community_id'] + config.CAT_FEATURES + config.NUMERIC_FEATURES + ['Label']
 
 print("Starting memory-efficient extraction from JSON to CSV...")
 print(f"Input: {INPUT_FILE}")
@@ -36,6 +36,8 @@ with open(INPUT_FILE, 'r') as infile, open(OUTPUT_FILE, 'w', newline='') as outf
             
         # initialize row dict
         row = {'Label': label}
+
+        row['community_id'] = event.get('community_id', 'Missing')
         
         # CATEGORICAL FEATURES
         row['proto'] = event.get('proto', 'Missing')
