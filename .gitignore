@@ -18,6 +18,7 @@ venv/
 env/
 ml_env/
 .ipynb_checkpoints/
-
+*.pdf
+*.png
 *.csv
 catboost_info/

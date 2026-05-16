@@ -6,10 +6,10 @@ import psutil
 import config
 from catboost import CatBoostClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+# Added average_precision_score below:
+from sklearn.metrics import classification_report, confusion_matrix, average_precision_score
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
 
 # ==========================================
 # THESIS INFERENCE & EVALUATION SCRIPT
@@ -101,11 +101,27 @@ if __name__ == "__main__":
     
     print("\n--- THESIS CLASSIFICATION METRICS ---")
     print(report)
+    
+    # ==========================================
+    # NEW PR-AUC CALCULATION BLOCK
+    # ==========================================
+    # Convert string labels to binary for PR-AUC math (Malicious = 1, BENIGN = 0)
+    y_test_binary = (y_test == 'Malicious').astype(int)
+    
+    # Find which column index CatBoost assigned to the 'Malicious' class
+    malicious_idx = list(model.classes_).index('Malicious')
+    
+    # Get the raw probability scores instead of hard labels
+    y_pred_proba = model.predict_proba(X_test)[:, malicious_idx]
+    
+    # Calculate PR-AUC score
+    pr_auc = average_precision_score(y_test_binary, y_pred_proba)
+    print(f"PR-AUC Score:          {pr_auc:.6f}")
+    # ==========================================
     print("-------------------------------------")
 
 
     # visualization by confusion matrix
-
     print("\n5. Generating Visual Confusion Matrix...")
     cm = confusion_matrix(y_test, preds_flat)
     labels = sorted(y_test.unique())
@@ -122,3 +138,33 @@ if __name__ == "__main__":
 
     plt.savefig('confusion_matrix.png')
     print("Confusion Matrix saved as 'confusion_matrix.png'")
+
+    # ==========================================
+    # 6. EXTRACTING FALSE NEGATIVES
+    # ==========================================
+    print("\n6. Extracting False Negatives...")
+    
+    # Create a boolean mask: Actual is Malicious, but Predicted is BENIGN
+    fn_mask = (y_test == 'Malicious') & (preds_flat == 'BENIGN')
+    
+    # Filter the original test dataframe using the mask
+    false_negatives_df = X_test[fn_mask].copy()
+    
+    # Add helpful tracking columns at the end
+    false_negatives_df['Actual_Label'] = y_test[fn_mask]
+    false_negatives_df['Predicted_Label'] = preds_flat[fn_mask]
+    
+    # Add the probability score to see how confident the model was in its wrong answer
+    # (y_pred_proba was already calculated in your PR-AUC block)
+    false_negatives_df['Malicious_Probability'] = y_pred_proba[fn_mask]
+    false_negatives_df['Original_Row_ID'] = false_negatives_df.index
+
+    # Save to CSV
+    fn_count = len(false_negatives_df)
+    csv_filename = "false_negatives_analysis.csv"
+    false_negatives_df.to_csv(csv_filename, index=False)
+
+    print(f"Successfully extracted {fn_count} False Negatives.")
+    print(f"Saved to '{csv_filename}'. ")
+
+    

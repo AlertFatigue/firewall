@@ -44,7 +44,7 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, 
         test_size=0.20, 
-        random_state=42, 
+        random_state=24, 
         stratify=y 
     )
 
@@ -86,7 +86,6 @@ if __name__ == "__main__":
         loss_function='Logloss', 
         eval_metric='F1',
         task_type="CPU",
-        # auto_class_weights='Balanced', 
         random_seed=24,
         thread_count=4, # limits CPU threads to prevent memory spikes
         border_count=32 # reduces memory footprint heavily
@@ -122,33 +121,3 @@ if __name__ == "__main__":
     # Save the model
     model.save_model("suricata_catboost_model.cbm")
     print("Model saved to 'suricata_catboost_model.cbm'")
-
-
-    # inference profiling
-    print("\n--- Starting Inference (Testing) Profiling ---")
-    
-    # isolate testing featres
-    num_test_samples = len(X_test)
-    
-    start_infer_time = time.perf_counter()
-    
-    # model predictions for test set
-    predictions = model.predict(X_test)
-    
-    end_infer_time = time.perf_counter()
-    #
-
-    total_infer_duration = end_infer_time - start_infer_time
-    
-    # calculate milliseconds to classify one flow
-    per_flow_latency_ms = (total_infer_duration / num_test_samples) * 1000
-    
-    # throughput calc
-    throughput_fps = num_test_samples / total_infer_duration
-
-    print(f"\n--- THESIS INFERENCE METRICS ---")
-    print(f"Total Test Samples:    {num_test_samples:,}")
-    print(f"Total Inference Time:  {total_infer_duration:.4f} seconds")
-    print(f"Per-Flow Latency:      {per_flow_latency_ms:.6f} milliseconds")
-    print(f"Throughput:            {throughput_fps:,.2f} flows/second")
-    print(f"--------------------------------")
