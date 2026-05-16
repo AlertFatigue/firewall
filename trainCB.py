@@ -18,7 +18,8 @@ if __name__ == "__main__":
     
     # passed the dtype_mapping into the read function to save RAM
     df = pd.read_csv('suricata_features_extracted.csv', dtype=dtype_mapping)
-    
+    if 'community_id' in df.columns:
+        df.set_index('community_id', inplace=True)
     print(f"Dataset loaded. Shape: {df.shape}")
     
     # drop rows where the Label is missing to prevent train_test_split crash

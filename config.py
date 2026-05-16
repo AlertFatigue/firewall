@@ -9,7 +9,7 @@ FILE_PATH = os.path.join(SCRIPT_DIR, 'suricata_logs/eve_labeled.json')
 # ==========================================
 COLS_TO_DROP = [
     # removing identifiers and routing
-    'timestamp', 'flow_id', 'tx_id', 'community_id', 'in_iface', 'event_type',
+    'timestamp', 'flow_id', 'tx_id', 'in_iface', 'event_type',
     'src_ip', 'dest_ip', 'src_port', 'dest_port', 
     
     # preventing memorization of timeline by model

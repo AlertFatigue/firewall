@@ -139,32 +139,44 @@ if __name__ == "__main__":
     plt.savefig('confusion_matrix.png')
     print("Confusion Matrix saved as 'confusion_matrix.png'")
 
-    # ==========================================
-    # 6. EXTRACTING FALSE NEGATIVES
-    # ==========================================
     print("\n6. Extracting False Negatives...")
     
-    # Create a boolean mask: Actual is Malicious, but Predicted is BENIGN
     fn_mask = (y_test == 'Malicious') & (preds_flat == 'BENIGN')
-    
-    # Filter the original test dataframe using the mask
     false_negatives_df = X_test[fn_mask].copy()
     
-    # Add helpful tracking columns at the end
     false_negatives_df['Actual_Label'] = y_test[fn_mask]
     false_negatives_df['Predicted_Label'] = preds_flat[fn_mask]
-    
-    # Add the probability score to see how confident the model was in its wrong answer
-    # (y_pred_proba was already calculated in your PR-AUC block)
     false_negatives_df['Malicious_Probability'] = y_pred_proba[fn_mask]
-    false_negatives_df['Original_Row_ID'] = false_negatives_df.index
-
-    # Save to CSV
-    fn_count = len(false_negatives_df)
-    csv_filename = "false_negatives_analysis.csv"
+    
+    # === THE FIX: PULL THE ID OUT OF THE INDEX ===
+    false_negatives_df.reset_index(inplace=True) 
+    # Now 'community_id' is a normal column again!
+    # =============================================
+    
+    csv_filename = "exact_false_negatives.csv"
     false_negatives_df.to_csv(csv_filename, index=False)
 
-    print(f"Successfully extracted {fn_count} False Negatives.")
-    print(f"Saved to '{csv_filename}'. ")
-
+    # ==========================================
+    # 7. EXTRACTING FALSE POSITIVES (FP)
+    # ==========================================
+    print("\n7. Extracting False Positives...")
+    
+    # Mask: Actual is BENIGN, but Predicted is Malicious
+    fp_mask = (y_test == 'BENIGN') & (preds_flat == 'Malicious')
+    
+    false_positives_df = X_test[fp_mask].copy()
+    
+    # Add metrics
+    false_positives_df['Actual_Label'] = y_test[fp_mask]
+    false_positives_df['Predicted_Label'] = preds_flat[fp_mask]
+    # Probability of being Malicious (even though it's actually Benign)
+    false_positives_df['Malicious_Probability'] = y_pred_proba[fp_mask]
+    
+    # Pull the ID back out of the index
+    false_positives_df.reset_index(inplace=True) 
+    
+    fp_filename = "exact_false_positives.csv"
+    false_positives_df.to_csv(fp_filename, index=False)
+    
+    print(f"Successfully saved {len(false_positives_df)} False Positives to '{fp_filename}'.")
     
