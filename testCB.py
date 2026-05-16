@@ -6,7 +6,6 @@ import psutil
 import config
 from catboost import CatBoostClassifier
 from sklearn.model_selection import train_test_split
-# Added average_precision_score below:
 from sklearn.metrics import classification_report, confusion_matrix, average_precision_score
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -22,11 +21,18 @@ if __name__ == "__main__":
     dtype_mapping = {col: np.float32 for col in config.NUMERIC_FEATURES}
     df = pd.read_csv('suricata_features_extracted.csv', dtype=dtype_mapping)
     
+    # === THE FIX: ALIGN COLUMNS BY HIDING ID IN INDEX ===
+    if 'community_id' in df.columns:
+        df.set_index('community_id', inplace=True)
+        print("Success: community_id moved to index.")
+    # ====================================================
+    
     # clean missing labels
     df = df.dropna(subset=['Label'])
 
     print("Grouping DoS attacks into a single 'Malicious' class...")
     df['Label'] = df['Label'].apply(lambda x: 'Malicious' if x != 'BENIGN' else 'BENIGN')
+    
     # handle missing cat vals
     for col in config.CAT_FEATURES:
         df[col] = df[col].fillna('Missing').astype(str)
@@ -48,6 +54,7 @@ if __name__ == "__main__":
 
     # record ram before loading model
     ram_before_model = process.memory_info().rss / (1024 * 1024)
+    
     # loading pretrained model from trainCB.py
     print("\n2. Loading Pre-trained CatBoost Model...")
     model = CatBoostClassifier()
@@ -63,6 +70,7 @@ if __name__ == "__main__":
     # recording ram after loading model
     ram_after_model = process.memory_info().rss / (1024 * 1024)
     model_footprint = ram_after_model - ram_before_model
+    
     # profiling performance
     print("\n3. Running Inference...")
     num_test_samples = len(X_test)
@@ -73,9 +81,11 @@ if __name__ == "__main__":
     predictions = model.predict(X_test)
     
     end_infer_time = time.perf_counter()
+    
     # calculate ram after inference is complete
     ram_after_inference = process.memory_info().rss / (1024 * 1024)
     inference_overhead = ram_after_inference - ram_after_model
+    
     # speed metrics
     total_infer_duration = end_infer_time - start_infer_time
     per_flow_latency_ms = (total_infer_duration / num_test_samples) * 1000
@@ -103,7 +113,7 @@ if __name__ == "__main__":
     print(report)
     
     # ==========================================
-    # NEW PR-AUC CALCULATION BLOCK
+    # PR-AUC CALCULATION BLOCK
     # ==========================================
     # Convert string labels to binary for PR-AUC math (Malicious = 1, BENIGN = 0)
     y_test_binary = (y_test == 'Malicious').astype(int)
@@ -148,10 +158,10 @@ if __name__ == "__main__":
     false_negatives_df['Predicted_Label'] = preds_flat[fn_mask]
     false_negatives_df['Malicious_Probability'] = y_pred_proba[fn_mask]
     
-    # === THE FIX: PULL THE ID OUT OF THE INDEX ===
+    # === PULL THE ID OUT OF THE INDEX ===
     false_negatives_df.reset_index(inplace=True) 
     # Now 'community_id' is a normal column again!
-    # =============================================
+    # ====================================
     
     csv_filename = "exact_false_negatives.csv"
     false_negatives_df.to_csv(csv_filename, index=False)
@@ -179,4 +189,3 @@ if __name__ == "__main__":
     false_positives_df.to_csv(fp_filename, index=False)
     
     print(f"Successfully saved {len(false_positives_df)} False Positives to '{fp_filename}'.")
-    

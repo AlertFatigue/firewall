@@ -9,7 +9,7 @@ import os
 import gc # Added for memory management
 
 # ==========================================
-# EXECUTION
+# THESIS TRAINING SCRIPT
 # ==========================================
 if __name__ == "__main__":
     print("1. Loading lightweight CSV dataset...")
@@ -18,8 +18,12 @@ if __name__ == "__main__":
     
     # passed the dtype_mapping into the read function to save RAM
     df = pd.read_csv('suricata_features_extracted.csv', dtype=dtype_mapping)
+    
+    # === THE FIX: HIDE ID IN INDEX ===
     if 'community_id' in df.columns:
         df.set_index('community_id', inplace=True)
+    # =================================
+    
     print(f"Dataset loaded. Shape: {df.shape}")
     
     # drop rows where the Label is missing to prevent train_test_split crash
@@ -30,6 +34,7 @@ if __name__ == "__main__":
 
     print("Grouping DoS attacks into a single 'Malicious' class...")
     df['Label'] = df['Label'].apply(lambda x: 'Malicious' if x != 'BENIGN' else 'BENIGN')
+    
     # forcefill all NaN with missing and make sure they are strings
     for col in config.CAT_FEATURES:
       df[col] = df[col].fillna('Missing').astype(str)
@@ -110,7 +115,6 @@ if __name__ == "__main__":
     end_train_time = time.perf_counter()
     end_train_ram = process.memory_info().rss / (1024 * 1024)
     
-
     train_duration = end_train_time - start_train_time
     ram_used_during_train = end_train_ram - start_train_ram
 
